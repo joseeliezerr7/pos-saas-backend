@@ -1,0 +1,187 @@
+<?php
+
+namespace App\Services;
+
+use App\Events\SaleCompleted;
+use App\Models\Sale\Sale;
+use App\Models\Sale\SaleDetail;
+use Illuminate\Support\Facades\DB;
+
+class SaleService
+{
+    public function __construct(
+        protected InventoryService $inventoryService
+    ) {}
+
+    /**
+     * Create a new sale
+     */
+    public function createSale(array $data): Sale
+    {
+        return DB::transaction(function () use ($data) {
+            // Auto-find cash opening if not provided
+            if (!isset($data['cash_opening_id']) || empty($data['cash_opening_id'])) {
+                $cashOpening = \App\Models\CashRegister\CashOpening::where('is_open', true)
+                    ->where('tenant_id', auth()->user()->tenant_id)
+                    ->first();
+
+                if (!$cashOpening) {
+                    throw new \Exception("Debe tener una caja abierta para realizar ventas");
+                }
+
+                $data['cash_opening_id'] = $cashOpening->id;
+            }
+
+            // Validate stock availability
+            foreach ($data['items'] as $item) {
+                if (!$this->inventoryService->hasStock(
+                    $item['product_id'],
+                    $data['branch_id'],
+                    $item['quantity'],
+                    $item['variant_id'] ?? null
+                )) {
+                    throw new \Exception("Stock insuficiente para el producto ID: {$item['product_id']}");
+                }
+            }
+
+            // Calculate totals
+            $subtotal = 0;
+            $tax = 0;
+            $discount = $data['discount'] ?? 0;
+
+            foreach ($data['items'] as $item) {
+                $itemSubtotal = $item['quantity'] * $item['price'];
+                $itemDiscount = $item['discount'] ?? 0;
+                $taxRate = $item['tax_rate'] ?? 15.0;
+
+                $subtotal += $itemSubtotal - $itemDiscount;
+                $tax += ($itemSubtotal - $itemDiscount) * ($taxRate / 100);
+            }
+
+            $total = $subtotal + $tax - $discount;
+
+            // Create sale
+            $sale = Sale::create([
+                'tenant_id' => auth()->user()->tenant_id,
+                'branch_id' => $data['branch_id'],
+                'cash_opening_id' => $data['cash_opening_id'],
+                'user_id' => auth()->id(),
+                'customer_id' => $data['customer_id'] ?? null,
+                'customer_rtn' => $data['customer_rtn'] ?? null,
+                'customer_name' => $data['customer_name'] ?? null,
+                'subtotal' => $subtotal,
+                'discount' => $discount,
+                'tax' => $tax,
+                'total' => $total,
+                'payment_method' => $data['payment_method'],
+                'payment_details' => $data['payment_details'] ?? null,
+                'amount_paid' => $data['amount_paid'] ?? $total,
+                'amount_change' => $data['amount_change'] ?? 0,
+                'status' => 'completed',
+                'notes' => $data['notes'] ?? null,
+                'sold_at' => now(),
+            ]);
+
+            // Create sale details and update inventory
+            foreach ($data['items'] as $item) {
+                $product = \App\Models\Catalog\Product::find($item['product_id']);
+
+                SaleDetail::create([
+                    'sale_id' => $sale->id,
+                    'product_id' => $item['product_id'],
+                    'variant_id' => $item['variant_id'] ?? null,
+                    'product_name' => $product->name,
+                    'product_sku' => $product->sku,
+                    'quantity' => $item['quantity'],
+                    'price' => $item['price'],
+                    'cost' => $product->cost,
+                    'discount' => $item['discount'] ?? 0,
+                    'tax_rate' => $item['tax_rate'] ?? 15.0,
+                    'subtotal' => ($item['quantity'] * $item['price']) - ($item['discount'] ?? 0),
+                ]);
+
+                // Reduce stock
+                $this->inventoryService->reduceStock(
+                    $item['product_id'],
+                    $data['branch_id'],
+                    $item['quantity'],
+                    $item['variant_id'] ?? null,
+                    'sale',
+                    $sale->id
+                );
+            }
+
+            // Register cash transaction (always required now)
+            \App\Models\CashRegister\CashTransaction::create([
+                'tenant_id' => $sale->tenant_id,
+                'cash_opening_id' => $data['cash_opening_id'],
+                'user_id' => auth()->id(),
+                'type' => 'sale',
+                'amount' => $total,
+                'payment_method' => $data['payment_method'],
+                'reference' => $sale->sale_number,
+            ]);
+
+            // Dispatch event
+            event(new SaleCompleted($sale));
+
+            return $sale->load('details');
+        });
+    }
+
+    /**
+     * Void a sale
+     */
+    public function voidSale(Sale $sale, string $reason = null): bool
+    {
+        if ($sale->isVoided()) {
+            throw new \Exception('La venta ya está anulada');
+        }
+
+        if ($sale->hasInvoice() && !$sale->invoice->isVoided()) {
+            throw new \Exception('Debe anular la factura antes de anular la venta');
+        }
+
+        return DB::transaction(function () use ($sale, $reason) {
+            // Restore inventory
+            foreach ($sale->details as $detail) {
+                $this->inventoryService->increaseStock(
+                    $detail->product_id,
+                    $sale->branch_id,
+                    $detail->quantity,
+                    $detail->variant_id,
+                    'return',
+                    $sale->id
+                );
+            }
+
+            // Update sale status
+            $sale->update([
+                'status' => 'voided',
+                'notes' => ($sale->notes ?? '') . "\nANULADA: {$reason}",
+            ]);
+
+            return true;
+        });
+    }
+
+    /**
+     * Get sales statistics
+     */
+    public function getSalesStatistics(int $branchId, string $startDate, string $endDate): array
+    {
+        $sales = Sale::where('branch_id', $branchId)
+            ->where('status', 'completed')
+            ->whereBetween('sold_at', [$startDate, $endDate])
+            ->get();
+
+        return [
+            'total_sales' => $sales->count(),
+            'total_revenue' => $sales->sum('total'),
+            'total_tax' => $sales->sum('tax'),
+            'total_discount' => $sales->sum('discount'),
+            'average_sale' => $sales->avg('total'),
+            'total_items' => $sales->sum(fn($sale) => $sale->getTotalItems()),
+        ];
+    }
+}
