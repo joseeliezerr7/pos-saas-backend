@@ -3,6 +3,8 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CustomerController;
+use App\Http\Controllers\Api\CustomerGroupController;
+use App\Http\Controllers\Api\CustomerTagController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\UnitController;
 use App\Http\Controllers\Api\FileUploadController;
@@ -132,6 +134,32 @@ Route::middleware(['auth:sanctum', 'tenant.scope', 'check.subscription'])->group
     Route::put('customers/{customer}', [CustomerController::class, 'update'])->middleware('permission:edit_customers');
     Route::delete('customers/{customer}', [CustomerController::class, 'destroy'])->middleware('permission:delete_customers');
 
+    // Customer Groups
+    Route::prefix('customer-groups')->group(function () {
+        Route::get('/', [CustomerGroupController::class, 'index'])->middleware('permission:view_customer_groups');
+        Route::post('/', [CustomerGroupController::class, 'store'])->middleware('permission:create_customer_groups');
+        Route::get('stats', [CustomerGroupController::class, 'stats'])->middleware('permission:view_customer_groups');
+        Route::post('calculate-rfm', [CustomerGroupController::class, 'calculateRFM'])->middleware('permission:manage_customer_groups');
+        Route::get('{id}', [CustomerGroupController::class, 'show'])->middleware('permission:view_customer_groups');
+        Route::put('{id}', [CustomerGroupController::class, 'update'])->middleware('permission:edit_customer_groups');
+        Route::delete('{id}', [CustomerGroupController::class, 'destroy'])->middleware('permission:delete_customer_groups');
+        Route::get('{id}/prices', [CustomerGroupController::class, 'prices'])->middleware('permission:view_customer_groups');
+        Route::post('{id}/prices', [CustomerGroupController::class, 'setPrice'])->middleware('permission:edit_customer_groups');
+        Route::delete('{id}/prices/{priceId}', [CustomerGroupController::class, 'removePrice'])->middleware('permission:edit_customer_groups');
+        Route::post('{id}/assign-customers', [CustomerGroupController::class, 'assignCustomers'])->middleware('permission:edit_customer_groups');
+    });
+
+    // Customer Tags
+    Route::prefix('customer-tags')->group(function () {
+        Route::get('/', [CustomerTagController::class, 'index'])->middleware('permission:view_customer_tags');
+        Route::post('/', [CustomerTagController::class, 'store'])->middleware('permission:create_customer_tags');
+        Route::get('{id}', [CustomerTagController::class, 'show'])->middleware('permission:view_customer_tags');
+        Route::put('{id}', [CustomerTagController::class, 'update'])->middleware('permission:edit_customer_tags');
+        Route::delete('{id}', [CustomerTagController::class, 'destroy'])->middleware('permission:delete_customer_tags');
+        Route::post('{id}/assign', [CustomerTagController::class, 'assignToCustomers'])->middleware('permission:edit_customer_tags');
+        Route::post('{id}/remove', [CustomerTagController::class, 'removeFromCustomers'])->middleware('permission:edit_customer_tags');
+    });
+
     // Inventory/Stock
     Route::prefix('stock')->group(function () {
         Route::get('/', [\App\Http\Controllers\API\Inventory\StockController::class, 'index'])->middleware('permission:view_inventory');
@@ -212,6 +240,20 @@ Route::middleware(['auth:sanctum', 'tenant.scope', 'check.subscription'])->group
     Route::post('returns/{id}/complete', [\App\Http\Controllers\API\Sales\ReturnController::class, 'complete'])->middleware('permission:create_sales');
     Route::post('returns/{id}/cancel', [\App\Http\Controllers\API\Sales\ReturnController::class, 'cancel'])->middleware('permission:create_sales');
 
+    // Promotions
+    Route::prefix('promotions')->group(function () {
+        Route::get('/', [\App\Http\Controllers\API\PromotionController::class, 'index'])->middleware('permission:view_sales');
+        Route::post('/', [\App\Http\Controllers\API\PromotionController::class, 'store'])->middleware('permission:create_sales');
+        Route::get('{id}', [\App\Http\Controllers\API\PromotionController::class, 'show'])->middleware('permission:view_sales');
+        Route::put('{id}', [\App\Http\Controllers\API\PromotionController::class, 'update'])->middleware('permission:create_sales');
+        Route::delete('{id}', [\App\Http\Controllers\API\PromotionController::class, 'destroy'])->middleware('permission:create_sales');
+        Route::post('{id}/toggle-active', [\App\Http\Controllers\API\PromotionController::class, 'toggleActive'])->middleware('permission:create_sales');
+        Route::get('{id}/stats', [\App\Http\Controllers\API\PromotionController::class, 'stats'])->middleware('permission:view_sales');
+        Route::post('validate-coupon', [\App\Http\Controllers\API\PromotionController::class, 'validateCoupon'])->middleware('permission:view_sales');
+        Route::post('get-applicable', [\App\Http\Controllers\API\PromotionController::class, 'getApplicablePromotions'])->middleware('permission:view_sales');
+        Route::post('apply', [\App\Http\Controllers\API\PromotionController::class, 'applyPromotion'])->middleware('permission:view_sales');
+    });
+
     // CAI (Fiscal - SAR Honduras)
     Route::prefix('cais')->group(function () {
         Route::get('/', [CAIController::class, 'index']);
@@ -266,6 +308,18 @@ Route::middleware(['auth:sanctum', 'tenant.scope', 'check.subscription'])->group
         Route::get('{id}/download', [\App\Http\Controllers\API\Report\ReportController::class, 'download'])->middleware('permission:export_reports');
     });
 
+    // Financial Reports (Advanced)
+    Route::prefix('financial-reports')->group(function () {
+        Route::post('profit-loss', [\App\Http\Controllers\Api\FinancialReportController::class, 'profitAndLoss'])->middleware('permission:view_reports');
+        Route::post('balance-sheet', [\App\Http\Controllers\Api\FinancialReportController::class, 'balanceSheet'])->middleware('permission:view_reports');
+        Route::post('cash-flow', [\App\Http\Controllers\Api\FinancialReportController::class, 'cashFlow'])->middleware('permission:view_reports');
+        Route::post('product-profitability', [\App\Http\Controllers\Api\FinancialReportController::class, 'productProfitability'])->middleware('permission:view_reports');
+        Route::post('category-profitability', [\App\Http\Controllers\Api\FinancialReportController::class, 'categoryProfitability'])->middleware('permission:view_reports');
+        Route::post('branch-profitability', [\App\Http\Controllers\Api\FinancialReportController::class, 'branchProfitability'])->middleware('permission:view_reports');
+        Route::post('monthly-comparison', [\App\Http\Controllers\Api\FinancialReportController::class, 'monthlyComparison'])->middleware('permission:view_reports');
+        Route::post('comprehensive', [\App\Http\Controllers\Api\FinancialReportController::class, 'comprehensiveReport'])->middleware('permission:view_reports');
+    });
+
     // Dashboard
     Route::prefix('dashboard')->group(function () {
         Route::get('stats', [\App\Http\Controllers\API\DashboardController::class, 'stats'])->middleware('permission:view_dashboard');
@@ -288,4 +342,141 @@ Route::middleware(['auth:sanctum', 'tenant.scope', 'check.subscription'])->group
         Route::get('auditable-types', [\App\Http\Controllers\API\Audit\AuditLogController::class, 'auditableTypes']);
         Route::get('{id}', [\App\Http\Controllers\API\Audit\AuditLogController::class, 'show']);
     });
+
+    // Barcodes
+    Route::prefix('barcodes')->group(function () {
+        Route::post('generate-unique', [\App\Http\Controllers\API\BarcodeController::class, 'generateUnique']);
+        Route::post('generate-svg', [\App\Http\Controllers\API\BarcodeController::class, 'generateSVG']);
+        Route::post('validate', [\App\Http\Controllers\API\BarcodeController::class, 'validate']);
+        Route::post('labels', [\App\Http\Controllers\API\BarcodeController::class, 'generateLabels']);
+        Route::post('labels/pdf', [\App\Http\Controllers\API\BarcodeController::class, 'generateLabelsPDF']);
+    });
+
+    // Import/Export
+    Route::prefix('import-export')->group(function () {
+        // Templates CSV
+        Route::get('templates/products', [\App\Http\Controllers\API\ImportExportController::class, 'getProductTemplate']);
+        Route::get('templates/customers', [\App\Http\Controllers\API\ImportExportController::class, 'getCustomerTemplate']);
+        Route::get('templates/inventory', [\App\Http\Controllers\API\ImportExportController::class, 'getInventoryTemplate']);
+        Route::get('templates/price-update', [\App\Http\Controllers\API\ImportExportController::class, 'getPriceUpdateTemplate']);
+
+        // Templates Excel
+        Route::get('templates/products/excel', [\App\Http\Controllers\API\ImportExportController::class, 'getProductTemplateExcel']);
+        Route::get('templates/customers/excel', [\App\Http\Controllers\API\ImportExportController::class, 'getCustomerTemplateExcel']);
+        Route::get('templates/inventory/excel', [\App\Http\Controllers\API\ImportExportController::class, 'getInventoryTemplateExcel']);
+        Route::get('templates/price-update/excel', [\App\Http\Controllers\API\ImportExportController::class, 'getPriceUpdateTemplateExcel']);
+
+        // Preview
+        Route::post('preview', [\App\Http\Controllers\API\ImportExportController::class, 'previewImport']);
+
+        // Import
+        Route::post('import/products', [\App\Http\Controllers\API\ImportExportController::class, 'importProducts'])->middleware('permission:create_products');
+        Route::post('import/customers', [\App\Http\Controllers\API\ImportExportController::class, 'importCustomers'])->middleware('permission:create_customers');
+        Route::post('import/inventory', [\App\Http\Controllers\API\ImportExportController::class, 'importInventory'])->middleware('permission:adjust_inventory');
+        Route::post('bulk-update-prices', [\App\Http\Controllers\API\ImportExportController::class, 'bulkUpdatePrices'])->middleware('permission:update_products');
+
+        // Export
+        Route::get('export/products', [\App\Http\Controllers\API\ImportExportController::class, 'exportProducts'])->middleware('permission:export_reports');
+        Route::get('export/customers', [\App\Http\Controllers\API\ImportExportController::class, 'exportCustomers'])->middleware('permission:export_reports');
+        Route::get('export/sales', [\App\Http\Controllers\API\ImportExportController::class, 'exportSales'])->middleware('permission:export_reports');
+    });
+
+    // Loyalty Program
+    Route::prefix('loyalty')->group(function () {
+        // Program
+        Route::get('program', [\App\Http\Controllers\API\Loyalty\LoyaltyController::class, 'getProgram'])->middleware('permission:view_sales');
+        Route::post('program', [\App\Http\Controllers\API\Loyalty\LoyaltyController::class, 'saveProgram'])->middleware('permission:create_sales');
+
+        // Tiers
+        Route::get('tiers', [\App\Http\Controllers\API\Loyalty\LoyaltyController::class, 'getTiers'])->middleware('permission:view_sales');
+        Route::post('tiers', [\App\Http\Controllers\API\Loyalty\LoyaltyController::class, 'createTier'])->middleware('permission:create_sales');
+        Route::put('tiers/{id}', [\App\Http\Controllers\API\Loyalty\LoyaltyController::class, 'updateTier'])->middleware('permission:create_sales');
+        Route::delete('tiers/{id}', [\App\Http\Controllers\API\Loyalty\LoyaltyController::class, 'deleteTier'])->middleware('permission:create_sales');
+
+        // Customer Loyalty
+        Route::get('customers/{customerId}/summary', [\App\Http\Controllers\API\Loyalty\LoyaltyController::class, 'getCustomerSummary'])->middleware('permission:view_customers');
+        Route::post('customers/{customerId}/enroll', [\App\Http\Controllers\API\Loyalty\LoyaltyController::class, 'enrollCustomer'])->middleware('permission:create_customers');
+        Route::get('customers/{customerId}/transactions', [\App\Http\Controllers\API\Loyalty\LoyaltyController::class, 'getCustomerTransactions'])->middleware('permission:view_customers');
+
+        // Points
+        Route::post('redeem', [\App\Http\Controllers\API\Loyalty\LoyaltyController::class, 'redeemPoints'])->middleware('permission:create_sales');
+        Route::post('adjust', [\App\Http\Controllers\API\Loyalty\LoyaltyController::class, 'adjustPoints'])->middleware('permission:create_sales');
+    });
+
+    // Gift Cards
+    Route::prefix('gift-cards')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\GiftCardController::class, 'index'])->middleware('permission:view_sales');
+        Route::post('/', [\App\Http\Controllers\Api\GiftCardController::class, 'store'])->middleware('permission:create_sales');
+        Route::get('statistics', [\App\Http\Controllers\Api\GiftCardController::class, 'statistics'])->middleware('permission:view_reports');
+        Route::post('check-balance', [\App\Http\Controllers\Api\GiftCardController::class, 'checkBalance'])->middleware('permission:view_sales');
+        Route::post('redeem', [\App\Http\Controllers\Api\GiftCardController::class, 'redeem'])->middleware('permission:create_sales');
+        Route::post('expire', [\App\Http\Controllers\Api\GiftCardController::class, 'expireCards'])->middleware('permission:create_sales');
+        Route::get('{id}', [\App\Http\Controllers\Api\GiftCardController::class, 'show'])->middleware('permission:view_sales');
+        Route::post('{id}/add-balance', [\App\Http\Controllers\Api\GiftCardController::class, 'addBalance'])->middleware('permission:create_sales');
+        Route::post('{id}/void', [\App\Http\Controllers\Api\GiftCardController::class, 'void'])->middleware('permission:create_sales');
+    });
+
+    // Credit Management
+    Route::prefix('credit')->group(function () {
+        // Payments
+        Route::get('payments', [\App\Http\Controllers\API\Credit\CustomerPaymentController::class, 'index'])
+            ->middleware('permission:view_credit');
+        Route::post('payments', [\App\Http\Controllers\API\Credit\CustomerPaymentController::class, 'store'])
+            ->middleware('permission:create_credit_payments');
+        Route::get('payments/{id}', [\App\Http\Controllers\API\Credit\CustomerPaymentController::class, 'show'])
+            ->middleware('permission:view_credit');
+        Route::get('payments/{id}/receipt', [\App\Http\Controllers\API\Credit\CustomerPaymentController::class, 'downloadReceipt'])
+            ->middleware('permission:view_credit');
+
+        // Credit Sales
+        Route::get('sales', [\App\Http\Controllers\API\Credit\CreditSaleController::class, 'index'])
+            ->middleware('permission:view_credit');
+        Route::get('sales/{id}', [\App\Http\Controllers\API\Credit\CreditSaleController::class, 'show'])
+            ->middleware('permission:view_credit');
+        Route::get('customers/{customerId}/pending', [\App\Http\Controllers\API\Credit\CreditSaleController::class, 'customerPending'])
+            ->middleware('permission:view_credit');
+
+        // Reports
+        Route::post('reports/statement', [\App\Http\Controllers\API\Credit\CreditReportController::class, 'customerStatement'])
+            ->middleware('permission:view_reports');
+        Route::get('reports/aging', [\App\Http\Controllers\API\Credit\CreditReportController::class, 'agingReport'])
+            ->middleware('permission:view_reports');
+        Route::get('reports/dashboard', [\App\Http\Controllers\API\Credit\CreditReportController::class, 'dashboard'])
+            ->middleware('permission:view_reports');
+    });
 });
+
+// Super Admin Routes - Gestión de todos los tenants
+Route::middleware(['auth:sanctum', 'super_admin'])->prefix('super-admin')->group(function () {
+
+    // Dashboard de Super Admin
+    Route::get('dashboard', [\App\Http\Controllers\API\SuperAdmin\SuperAdminTenantController::class, 'dashboard']);
+
+    // Gestión de Tenants
+    Route::prefix('tenants')->group(function () {
+        Route::get('/', [\App\Http\Controllers\API\SuperAdmin\SuperAdminTenantController::class, 'index']);
+        Route::post('/', [\App\Http\Controllers\API\SuperAdmin\SuperAdminTenantController::class, 'store']);
+        Route::get('export', [\App\Http\Controllers\API\SuperAdmin\SuperAdminTenantController::class, 'export']);
+        Route::get('{id}', [\App\Http\Controllers\API\SuperAdmin\SuperAdminTenantController::class, 'show']);
+        Route::post('{id}/toggle-status', [\App\Http\Controllers\API\SuperAdmin\SuperAdminTenantController::class, 'toggleStatus']);
+        Route::put('{id}/subscription', [\App\Http\Controllers\API\SuperAdmin\SuperAdminTenantController::class, 'updateSubscription']);
+        Route::delete('{id}', [\App\Http\Controllers\API\SuperAdmin\SuperAdminTenantController::class, 'destroy']);
+    });
+});
+
+// Plan Usage Endpoint (para tenants normales)
+Route::middleware(['auth:sanctum', 'tenant.scope'])->group(function () {
+    Route::get('plan-usage', [\App\Http\Controllers\API\Tenant\PlanUsageController::class, 'index']);
+});
+
+// Tenant Domains Management (para administradores de empresa)
+Route::middleware(['auth:sanctum', 'tenant.scope', 'permission:manage_company'])->prefix('tenant-domains')->group(function () {
+    Route::get('/', [\App\Http\Controllers\API\Tenant\TenantDomainController::class, 'index']);
+    Route::post('/', [\App\Http\Controllers\API\Tenant\TenantDomainController::class, 'store']);
+    Route::post('{domainId}/verify', [\App\Http\Controllers\API\Tenant\TenantDomainController::class, 'verify']);
+    Route::post('{domainId}/set-primary', [\App\Http\Controllers\API\Tenant\TenantDomainController::class, 'setPrimary']);
+    Route::delete('{domainId}', [\App\Http\Controllers\API\Tenant\TenantDomainController::class, 'destroy']);
+});
+
+// Plans endpoint (público o para super admin)
+Route::get('plans', [\App\Http\Controllers\API\Tenant\PlanController::class, 'index']);

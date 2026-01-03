@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Purchase;
 use App\Models\PurchaseDetail;
 use App\Models\Stock;
+use App\Traits\ValidatesPlanLimits;
+use App\Traits\FiltersByBranch;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -13,6 +15,7 @@ use Illuminate\Support\Facades\Validator;
 
 class PurchaseController extends Controller
 {
+    use ValidatesPlanLimits, FiltersByBranch;
     /**
      * Display a listing of purchases
      */
@@ -20,6 +23,9 @@ class PurchaseController extends Controller
     {
         $query = Purchase::with(['supplier', 'user', 'branch'])
             ->withCount('details');
+
+        // Apply branch filter
+        $query = $this->applyBranchFilter($query, $request->branch_id);
 
         // Search
         if ($request->has('search')) {
@@ -103,7 +109,7 @@ class PurchaseController extends Controller
             // Create purchase
             $purchase = Purchase::create([
                 'tenant_id' => auth()->user()->tenant_id,
-                'branch_id' => auth()->user()->branch_id ?? 1,
+                'branch_id' => $this->getBranchIdForCreate($request->branch_id),
                 'supplier_id' => $request->supplier_id,
                 'user_id' => auth()->id(),
                 'supplier_invoice_number' => $request->supplier_invoice_number,

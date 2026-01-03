@@ -24,8 +24,15 @@ class PlanController extends Controller
                     'slug' => $plan->slug,
                     'description' => $plan->description,
                     'price_monthly' => (float) $plan->price_monthly,
+                    'monthly_price' => (float) $plan->price_monthly,  // Frontend compatibility
                     'price_yearly' => (float) $plan->price_yearly,
+                    'yearly_price' => (float) $plan->price_yearly,    // Frontend compatibility
                     'features' => $plan->features,
+                    // Add limits directly to plan object for frontend compatibility
+                    'max_branches' => $plan->max_branches,
+                    'max_users' => $plan->max_users,
+                    'max_products' => $plan->max_products,
+                    'max_monthly_transactions' => $plan->max_monthly_transactions,
                     'limits' => [
                         'max_branches' => $plan->max_branches,
                         'max_users' => $plan->max_users,

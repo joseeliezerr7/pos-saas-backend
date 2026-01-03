@@ -111,14 +111,15 @@ class InventoryAdjustmentService
                     'product_id' => $detail->product_id,
                     'variant_id' => $detail->variant_id,
                     'branch_id' => $adjustment->branch_id,
-                    'type' => $detail->difference > 0 ? 'adjustment_in' : 'adjustment_out',
-                    'quantity' => abs($detail->difference),
+                    'type' => 'adjustment',
+                    'quantity' => $detail->difference, // Mantener el signo para indicar entrada (+) o salida (-)
                     'cost' => $detail->cost,
+                    'previous_quantity' => $detail->system_quantity,
+                    'new_quantity' => $detail->physical_quantity,
                     'reference_type' => 'App\\Models\\Inventory\\InventoryAdjustment',
                     'reference_id' => $adjustment->id,
                     'user_id' => auth()->id(),
                     'notes' => "Ajuste de inventario #{$adjustment->adjustment_number} - {$adjustment->reason_label}",
-                    'movement_date' => now(),
                 ]);
             }
 

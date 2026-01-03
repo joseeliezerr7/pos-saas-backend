@@ -33,6 +33,10 @@ class SARReportController extends Controller
         }
 
         $tenantId = auth()->user()->tenant_id;
+        $userBranchId = auth()->user()->branch_id;
+
+        // Determine which branch to filter by
+        $filterBranchId = $userBranchId ?? $request->branch_id ?? null;
 
         // Date range for the month
         $dateFrom = sprintf('%04d-%02d-01', $request->year, $request->month);
@@ -43,9 +47,9 @@ class SARReportController extends Controller
             ->where('tenant_id', $tenantId)
             ->whereBetween('issued_at', [$dateFrom . ' 00:00:00', $dateTo . ' 23:59:59']);
 
-        if ($request->has('branch_id')) {
-            $query->whereHas('sale', function ($q) use ($request) {
-                $q->where('branch_id', $request->branch_id);
+        if ($filterBranchId) {
+            $query->whereHas('sale', function ($q) use ($filterBranchId) {
+                $q->where('branch_id', $filterBranchId);
             });
         }
 
@@ -124,16 +128,23 @@ class SARReportController extends Controller
         }
 
         $tenantId = auth()->user()->tenant_id;
+        $userBranchId = auth()->user()->branch_id;
 
         // Date range for the month
         $dateFrom = sprintf('%04d-%02d-01', $request->year, $request->month);
         $dateTo = date('Y-m-t', strtotime($dateFrom));
 
         // Get valid invoices for the period
-        $invoices = Invoice::where('tenant_id', $tenantId)
+        $query = Invoice::where('tenant_id', $tenantId)
             ->where('status', 'valid')
-            ->whereBetween('issued_at', [$dateFrom . ' 00:00:00', $dateTo . ' 23:59:59'])
-            ->get();
+            ->whereBetween('issued_at', [$dateFrom . ' 00:00:00', $dateTo . ' 23:59:59']);
+
+        // Filter by user's branch if assigned
+        if ($userBranchId) {
+            $query->whereHas('sale', fn($q) => $q->where('branch_id', $userBranchId));
+        }
+
+        $invoices = $query->get();
 
         // Calculate DEI data (simplified version)
         $deiData = [

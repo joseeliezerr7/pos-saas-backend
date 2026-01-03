@@ -6,12 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\InventoryAdjustmentResource;
 use App\Models\Inventory\InventoryAdjustment;
 use App\Services\InventoryAdjustmentService;
+use App\Traits\FiltersByBranch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
 class InventoryAdjustmentController extends Controller
 {
+    use FiltersByBranch;
+
     public function __construct(
         protected InventoryAdjustmentService $adjustmentService
     ) {}
@@ -24,10 +27,8 @@ class InventoryAdjustmentController extends Controller
         $query = InventoryAdjustment::with(['details.product', 'details.variant', 'branch', 'user', 'approver'])
             ->where('tenant_id', auth()->user()->tenant_id);
 
-        // Filters
-        if ($request->filled('branch_id')) {
-            $query->where('branch_id', $request->branch_id);
-        }
+        // Apply branch filter
+        $query = $this->applyBranchFilter($query, $request->branch_id);
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);

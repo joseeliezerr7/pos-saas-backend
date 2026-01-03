@@ -18,8 +18,12 @@ class CAIController extends Controller
         $query = CAI::with(['branch'])
             ->where('tenant_id', auth()->user()->tenant_id);
 
-        // Filter by branch
-        if ($request->has('branch_id')) {
+        // Filter by user's branch (if user has assigned branch)
+        $userBranchId = auth()->user()->branch_id;
+        if ($userBranchId) {
+            $query->where('branch_id', $userBranchId);
+        } elseif ($request->has('branch_id')) {
+            // Admin can filter by specific branch
             $query->where('branch_id', $request->branch_id);
         }
 

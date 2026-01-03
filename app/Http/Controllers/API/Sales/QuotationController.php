@@ -6,12 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\QuotationResource;
 use App\Models\Sale\Quotation;
 use App\Services\QuotationService;
+use App\Traits\FiltersByBranch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
 class QuotationController extends Controller
 {
+    use FiltersByBranch;
+
     public function __construct(
         protected QuotationService $quotationService
     ) {}
@@ -24,10 +27,8 @@ class QuotationController extends Controller
         $query = Quotation::with(['details.product', 'user', 'customer', 'branch'])
             ->where('tenant_id', auth()->user()->tenant_id);
 
-        // Filters
-        if ($request->has('branch_id')) {
-            $query->where('branch_id', $request->branch_id);
-        }
+        // Apply branch filter
+        $query = $this->applyBranchFilter($query, $request->branch_id);
 
         if ($request->has('user_id')) {
             $query->where('user_id', $request->user_id);

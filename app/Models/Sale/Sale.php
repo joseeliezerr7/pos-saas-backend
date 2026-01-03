@@ -29,11 +29,14 @@ class Sale extends Model
         'sale_number',
         'customer_rtn',
         'customer_name',
+        'promotion_id',
+        'coupon_code',
         'subtotal',
         'discount',
         'tax',
         'total',
         'payment_method',
+        'transaction_reference',
         'payment_details',
         'amount_paid',
         'amount_change',
@@ -73,6 +76,11 @@ class Sale extends Model
     public function customer(): BelongsTo
     {
         return $this->belongsTo(\App\Models\Customer::class);
+    }
+
+    public function promotion(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Promotion::class);
     }
 
     public function details(): HasMany

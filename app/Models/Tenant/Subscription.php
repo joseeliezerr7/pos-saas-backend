@@ -32,7 +32,15 @@ class Subscription extends Model
         'auto_renew' => 'boolean',
     ];
 
+    protected $appends = ['starts_at'];
+
     protected $auditEvents = ['created', 'updated'];
+
+    // Accessor for backwards compatibility with frontend
+    public function getStartsAtAttribute()
+    {
+        return $this->started_at;
+    }
 
     public function company(): BelongsTo
     {

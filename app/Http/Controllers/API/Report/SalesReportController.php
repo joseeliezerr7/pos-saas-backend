@@ -41,7 +41,12 @@ class SalesReportController extends Controller
             ->where('status', 'completed')
             ->whereBetween('created_at', [$request->date_from . ' 00:00:00', $request->date_to . ' 23:59:59']);
 
-        if ($request->filled('branch_id')) {
+        // Filter by user's branch (if user has assigned branch)
+        $userBranchId = auth()->user()->branch_id;
+        if ($userBranchId) {
+            $query->where('branch_id', $userBranchId);
+        } elseif ($request->filled('branch_id')) {
+            // Admin can filter by specific branch
             $query->where('branch_id', $request->branch_id);
         }
 

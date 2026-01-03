@@ -22,6 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'check.cai' => \App\Http\Middleware\CheckCAI::class,
             'audit.log' => \App\Http\Middleware\AuditLog::class,
             'permission' => \App\Http\Middleware\CheckPermission::class,
+            'super_admin' => \App\Http\Middleware\CheckSuperAdmin::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

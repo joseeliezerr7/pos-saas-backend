@@ -4,12 +4,14 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Models\Expense;
+use App\Traits\FiltersByBranch;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 
 class ExpenseController extends Controller
 {
+    use FiltersByBranch;
     /**
      * Display a listing of expenses
      */
@@ -18,14 +20,12 @@ class ExpenseController extends Controller
         $query = Expense::with(['branch', 'user', 'supplier'])
             ->where('tenant_id', auth()->user()->tenant_id);
 
+        // Apply branch filter automatically
+        $query = $this->applyBranchFilter($query, $request->branch_id);
+
         // Filter by category
         if ($request->filled('category')) {
             $query->byCategory($request->category);
-        }
-
-        // Filter by branch
-        if ($request->filled('branch_id')) {
-            $query->byBranch($request->branch_id);
         }
 
         // Filter by payment method

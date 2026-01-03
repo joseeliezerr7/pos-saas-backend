@@ -15,7 +15,7 @@ class CustomerController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Customer::query();
+        $query = Customer::with(['customerGroup', 'loyalty.currentTier']);
 
         // Filter by status
         if ($request->has('is_active')) {
@@ -47,7 +47,17 @@ class CustomerController extends Controller
         $customers = Customer::active()
             ->search($term)
             ->limit(10)
-            ->get(['id', 'name', 'rtn', 'phone', 'email']);
+            ->get([
+                'id',
+                'name',
+                'rtn',
+                'phone',
+                'email',
+                'customer_group_id',
+                'credit_limit',
+                'current_balance',
+                'credit_days'
+            ]);
 
         return response()->json([
             'success' => true,
@@ -66,6 +76,7 @@ class CustomerController extends Controller
             'phone' => 'nullable|string|max:20',
             'email' => 'nullable|email|max:255',
             'address' => 'nullable|string',
+            'customer_group_id' => 'nullable|exists:customer_groups,id',
             'credit_limit' => 'nullable|numeric|min:0',
             'is_active' => 'boolean',
         ]);
@@ -84,6 +95,7 @@ class CustomerController extends Controller
             'phone' => $request->phone,
             'email' => $request->email,
             'address' => $request->address,
+            'customer_group_id' => $request->customer_group_id,
             'credit_limit' => $request->credit_limit ?? 0,
             'current_balance' => 0,
             'loyalty_points' => 0,
@@ -121,6 +133,7 @@ class CustomerController extends Controller
             'phone' => 'nullable|string|max:20',
             'email' => 'nullable|email|max:255',
             'address' => 'nullable|string',
+            'customer_group_id' => 'nullable|exists:customer_groups,id',
             'credit_limit' => 'nullable|numeric|min:0',
             'is_active' => 'boolean',
         ]);
@@ -140,6 +153,7 @@ class CustomerController extends Controller
             'phone' => $request->phone,
             'email' => $request->email,
             'address' => $request->address,
+            'customer_group_id' => $request->customer_group_id,
             'credit_limit' => $request->credit_limit ?? 0,
             'is_active' => $request->is_active ?? true,
         ]);

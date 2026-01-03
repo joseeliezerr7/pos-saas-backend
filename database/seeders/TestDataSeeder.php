@@ -134,7 +134,6 @@ class TestDataSeeder extends Seeder
                 'email' => 'juan.perez@example.com',
                 'phone' => '+504 9999-1111',
                 'address' => 'Col. Alameda, Tegucigalpa',
-                'customer_type' => 'individual',
                 'is_active' => true,
             ],
             [
@@ -144,7 +143,6 @@ class TestDataSeeder extends Seeder
                 'email' => 'maria.garcia@example.com',
                 'phone' => '+504 9999-2222',
                 'address' => 'Col. Florencia, San Pedro Sula',
-                'customer_type' => 'individual',
                 'is_active' => true,
             ],
             [
@@ -154,7 +152,6 @@ class TestDataSeeder extends Seeder
                 'email' => 'ventas@comercialhonduras.hn',
                 'phone' => '+504 2555-3333',
                 'address' => 'Barrio El Centro, Tegucigalpa',
-                'customer_type' => 'business',
                 'is_active' => true,
             ],
         ];

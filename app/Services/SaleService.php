@@ -10,7 +10,9 @@ use Illuminate\Support\Facades\DB;
 class SaleService
 {
     public function __construct(
-        protected InventoryService $inventoryService
+        protected InventoryService $inventoryService,
+        protected PromotionService $promotionService,
+        protected CreditService $creditService
     ) {}
 
     /**
@@ -58,7 +60,38 @@ class SaleService
                 $tax += ($itemSubtotal - $itemDiscount) * ($taxRate / 100);
             }
 
+            // Apply loyalty tier discount if customer has a tier
+            $tierDiscount = 0;
+            if (!empty($data['customer_id'])) {
+                $customerLoyalty = \App\Models\Loyalty\CustomerLoyalty::where('customer_id', $data['customer_id'])
+                    ->with('currentTier')
+                    ->first();
+
+                if ($customerLoyalty && $customerLoyalty->currentTier && $customerLoyalty->currentTier->discount_percentage > 0) {
+                    $tierDiscount = $subtotal * ($customerLoyalty->currentTier->discount_percentage / 100);
+                    $discount += $tierDiscount;
+                }
+            }
+
             $total = $subtotal + $tax - $discount;
+
+            // Validate credit limit if payment method is credit
+            if ($data['payment_method'] === 'credit') {
+                if (empty($data['customer_id'])) {
+                    throw new \Exception("Las ventas a crédito requieren un cliente asignado");
+                }
+
+                $customer = \App\Models\Customer::findOrFail($data['customer_id']);
+
+                $creditValidation = $this->creditService->validateCreditLimit($customer, $total);
+
+                // Show warning but allow override if explicitly requested
+                if (!$creditValidation['valid']) {
+                    if (!isset($data['override_credit_limit']) || !$data['override_credit_limit']) {
+                        throw new \Exception($creditValidation['warning']);
+                    }
+                }
+            }
 
             // Create sale
             $sale = Sale::create([
@@ -69,11 +102,14 @@ class SaleService
                 'customer_id' => $data['customer_id'] ?? null,
                 'customer_rtn' => $data['customer_rtn'] ?? null,
                 'customer_name' => $data['customer_name'] ?? null,
+                'promotion_id' => $data['promotion_id'] ?? null,
+                'coupon_code' => $data['coupon_code'] ?? null,
                 'subtotal' => $subtotal,
                 'discount' => $discount,
                 'tax' => $tax,
                 'total' => $total,
                 'payment_method' => $data['payment_method'],
+                'transaction_reference' => $data['transaction_reference'] ?? null,
                 'payment_details' => $data['payment_details'] ?? null,
                 'amount_paid' => $data['amount_paid'] ?? $total,
                 'amount_change' => $data['amount_change'] ?? 0,
@@ -121,6 +157,25 @@ class SaleService
                 'payment_method' => $data['payment_method'],
                 'reference' => $sale->sale_number,
             ]);
+
+            // Record promotion usage if promotion was applied
+            if (!empty($data['promotion_id']) && $discount > 0) {
+                $promotion = \App\Models\Promotion::find($data['promotion_id']);
+                if ($promotion) {
+                    $this->promotionService->recordPromotionUsage(
+                        $promotion,
+                        $sale,
+                        $discount,
+                        $data['coupon_code'] ?? null
+                    );
+                }
+            }
+
+            // Create credit sale record if payment method is credit
+            if ($sale->payment_method === 'credit' && $sale->customer_id) {
+                $customer = \App\Models\Customer::findOrFail($sale->customer_id);
+                $this->creditService->createCreditSale($sale, $customer);
+            }
 
             // Dispatch event
             event(new SaleCompleted($sale));

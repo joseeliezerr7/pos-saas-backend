@@ -4,12 +4,14 @@ namespace App\Http\Controllers\API\Tenant;
 
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
+use App\Traits\ValidatesPlanLimits;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
 class BranchController extends Controller
 {
+    use ValidatesPlanLimits;
     /**
      * Get all branches for the current tenant
      */
@@ -42,6 +44,12 @@ class BranchController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        // Validate plan limits before creating branch
+        $limitError = $this->validateBranchLimit();
+        if ($limitError) {
+            return $limitError;
+        }
+
         $validator = Validator::make($request->all(), [
             'code' => 'required|string|max:20|unique:branches,code,NULL,id,tenant_id,' . auth()->user()->tenant_id,
             'name' => 'required|string|max:255',

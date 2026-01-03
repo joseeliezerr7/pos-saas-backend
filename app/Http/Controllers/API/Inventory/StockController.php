@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Catalog\Product;
 use App\Models\Stock;
 use App\Services\InventoryService;
+use App\Traits\FiltersByBranch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -13,6 +14,8 @@ use Illuminate\Support\Facades\Validator;
 
 class StockController extends Controller
 {
+    use FiltersByBranch;
+
     public function __construct(
         protected InventoryService $inventoryService
     ) {}
@@ -27,10 +30,8 @@ class StockController extends Controller
                 $q->where('tenant_id', auth()->user()->tenant_id);
             });
 
-        // Filters
-        if ($request->filled('branch_id')) {
-            $query->where('branch_id', $request->branch_id);
-        }
+        // Apply branch filter based on user's assigned branch
+        $query = $this->applyBranchFilter($query, $request->branch_id);
 
         if ($request->filled('product_id')) {
             $query->where('product_id', $request->product_id);
@@ -72,6 +73,17 @@ class StockController extends Controller
      */
     public function byBranch(int $branchId): JsonResponse
     {
+        // Verify user can access this branch
+        if (!$this->canAccessBranch($branchId)) {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'UNAUTHORIZED_BRANCH',
+                    'message' => 'No tienes permiso para ver el stock de esta sucursal',
+                ],
+            ], 403);
+        }
+
         $stock = Stock::with(['product.category', 'branch'])
             ->where('branch_id', $branchId)
             ->whereHas('product', function($q) {

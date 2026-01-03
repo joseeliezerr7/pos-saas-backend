@@ -94,6 +94,14 @@ class Product extends Model
     // Helpers
     public function getTotalStockAttribute()
     {
+        // If user has assigned branch, sum stock only from that branch
+        $userBranchId = auth()->check() ? auth()->user()->branch_id : null;
+
+        if ($userBranchId) {
+            return $this->stock()->where('branch_id', $userBranchId)->sum('quantity');
+        }
+
+        // If admin (no branch assigned), sum all stock
         return $this->stock()->sum('quantity');
     }
 

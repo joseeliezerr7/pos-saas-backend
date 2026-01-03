@@ -6,14 +6,19 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\SaleResource;
 use App\Models\Sale\Sale;
 use App\Services\SaleService;
+use App\Services\LoyaltyService;
+use App\Traits\ValidatesPlanLimits;
+use App\Traits\FiltersByBranch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
 class SaleController extends Controller
 {
+    use ValidatesPlanLimits, FiltersByBranch;
     public function __construct(
-        protected SaleService $saleService
+        protected SaleService $saleService,
+        protected LoyaltyService $loyaltyService
     ) {}
 
     /**
@@ -31,13 +36,15 @@ class SaleController extends Controller
         $query = Sale::with(['details.product', 'user', 'customer'])
             ->where('tenant_id', auth()->user()->tenant_id);
 
-        $totalBeforeFilters = $query->count();
-        \Log::info('Sales before filters:', ['count' => $totalBeforeFilters]);
+        // Apply branch filter based on user's assigned branch
+        $query = $this->applyBranchFilter($query, $request->branch_id);
 
-        // Filters
-        if ($request->filled('branch_id')) {
-            $query->where('branch_id', $request->branch_id);
-        }
+        $totalBeforeFilters = $query->count();
+        \Log::info('Sales before filters:', [
+            'count' => $totalBeforeFilters,
+            'user_branch_id' => auth()->user()->branch_id,
+            'request_branch_id' => $request->branch_id
+        ]);
 
         if ($request->filled('user_id')) {
             $query->where('user_id', $request->user_id);
@@ -89,8 +96,14 @@ class SaleController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        // Validate monthly transaction limits before creating sale
+        $limitError = $this->validateMonthlyTransactionLimit();
+        if ($limitError) {
+            return $limitError;
+        }
+
         $validator = Validator::make($request->all(), [
-            'branch_id' => 'required|exists:branches,id',
+            'branch_id' => 'nullable|exists:branches,id',
             'cash_opening_id' => 'required|exists:cash_openings,id',
             'customer_id' => 'nullable|exists:customers,id',
             'customer_rtn' => 'nullable|string|max:14',
@@ -104,6 +117,7 @@ class SaleController extends Controller
             'items.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'discount' => 'nullable|numeric|min:0',
             'payment_method' => 'required|in:cash,card,transfer,credit,qr,mixed',
+            'transaction_reference' => 'nullable|string|max:100',
             'payment_details' => 'nullable|array',
             'amount_paid' => 'nullable|numeric|min:0',
             'amount_change' => 'nullable|numeric|min:0',
@@ -121,6 +135,23 @@ class SaleController extends Controller
             ], 422);
         }
 
+        // Determine branch_id: use user's branch if assigned, otherwise use provided or default
+        $branchId = $this->getBranchIdForCreate($request->branch_id);
+
+        // If user has assigned branch and tries to create in different branch, deny
+        if (auth()->user()->branch_id && $request->filled('branch_id') && $request->branch_id != auth()->user()->branch_id) {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'UNAUTHORIZED_BRANCH',
+                    'message' => 'No tienes permiso para crear ventas en esta sucursal',
+                ],
+            ], 403);
+        }
+
+        // Add branch_id to request data
+        $request->merge(['branch_id' => $branchId]);
+
         // Verify cash opening is open
         $cashOpening = \App\Models\CashRegister\CashOpening::find($request->cash_opening_id);
         if (!$cashOpening || $cashOpening->status !== 'open') {
@@ -136,10 +167,38 @@ class SaleController extends Controller
         try {
             $sale = $this->saleService->createSale($request->all());
 
+            // Send email notification if enabled
+            $company = auth()->user()->company;
+            $notificationSettings = $company->notification_settings ?? [];
+
+            if (isset($notificationSettings['send_sale_confirmation']) && $notificationSettings['send_sale_confirmation']) {
+                // Send email to customer if they have an email
+                if ($sale->customer && $sale->customer->email) {
+                    \Mail::to($sale->customer->email)->send(new \App\Mail\SaleConfirmation($sale));
+                }
+            }
+
+            // Award loyalty points if customer is enrolled
+            $loyaltyTransaction = null;
+            if ($sale->customer_id) {
+                try {
+                    $loyaltyTransaction = $this->loyaltyService->awardPointsForSale($sale);
+                } catch (\Exception $e) {
+                    \Log::warning('Failed to award loyalty points', [
+                        'sale_id' => $sale->id,
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            }
+
             return response()->json([
                 'success' => true,
                 'data' => new SaleResource($sale),
                 'message' => 'Venta creada exitosamente',
+                'loyalty' => $loyaltyTransaction ? [
+                    'points_earned' => $loyaltyTransaction->points,
+                    'new_balance' => $loyaltyTransaction->balance_after,
+                ] : null,
             ], 201);
         } catch (\Exception $e) {
             return response()->json([
@@ -157,9 +216,13 @@ class SaleController extends Controller
      */
     public function show(int $id): JsonResponse
     {
-        $sale = Sale::with(['details.product', 'user', 'customer', 'invoice'])
-            ->where('tenant_id', auth()->user()->tenant_id)
-            ->findOrFail($id);
+        $query = Sale::with(['details.product', 'user', 'customer', 'invoice'])
+            ->where('tenant_id', auth()->user()->tenant_id);
+
+        // Apply branch filter
+        $query = $this->applyBranchFilter($query);
+
+        $sale = $query->findOrFail($id);
 
         return response()->json([
             'success' => true,

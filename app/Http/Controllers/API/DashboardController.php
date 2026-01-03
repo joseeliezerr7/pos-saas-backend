@@ -6,12 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\Sale\Sale;
 use App\Models\Sale\ProductReturn;
+use App\Traits\FiltersByBranch;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
+    use FiltersByBranch;
     /**
      * Get dashboard statistics
      */
@@ -22,15 +24,25 @@ class DashboardController extends Controller
         $lastMonth = Carbon::now()->subMonth()->startOfMonth();
         $lastMonthEnd = Carbon::now()->subMonth()->endOfMonth();
 
+        // Get user's branch filter
+        $userBranchId = auth()->user()->branch_id;
+
         // Today's sales
-        $todaySales = Sale::whereDate('created_at', $today)
-            ->where('status', '!=', 'voided')
-            ->get();
+        $todaySalesQuery = Sale::whereDate('created_at', $today)
+            ->where('status', '!=', 'voided');
+
+        // Apply branch filter
+        $todaySalesQuery = $this->applyBranchFilter($todaySalesQuery);
+        $todaySales = $todaySalesQuery->get();
 
         $todayTotal = $todaySales->sum('total');
         $todayCount = $todaySales->count();
         $todayCash = $todaySales->where('payment_method', 'cash')->sum('total');
         $todayCard = $todaySales->where('payment_method', 'card')->sum('total');
+        $todayCredit = $todaySales->where('payment_method', 'credit')->sum('total');
+        $todayTransfer = $todaySales->where('payment_method', 'transfer')->sum('total');
+        $todayQR = $todaySales->where('payment_method', 'qr')->sum('total');
+        $todayOther = $todaySales->whereIn('payment_method', ['mixed', 'check', 'other'])->sum('total');
 
         // Today's returns (subtract from totals)
         $todayReturns = ProductReturn::whereDate('returned_at', $today)
@@ -38,9 +50,11 @@ class DashboardController extends Controller
             ->sum('refund_amount');
 
         // This month's sales
-        $monthSales = Sale::whereDate('created_at', '>=', $thisMonth)
-            ->where('status', '!=', 'voided')
-            ->get();
+        $monthSalesQuery = Sale::whereDate('created_at', '>=', $thisMonth)
+            ->where('status', '!=', 'voided');
+
+        $monthSalesQuery = $this->applyBranchFilter($monthSalesQuery);
+        $monthSales = $monthSalesQuery->get();
 
         $monthTotal = $monthSales->sum('total');
         $monthCount = $monthSales->count();
@@ -51,10 +65,12 @@ class DashboardController extends Controller
             ->sum('refund_amount');
 
         // Last month's sales for comparison
-        $lastMonthTotal = Sale::whereDate('created_at', '>=', $lastMonth)
+        $lastMonthQuery = Sale::whereDate('created_at', '>=', $lastMonth)
             ->whereDate('created_at', '<=', $lastMonthEnd)
-            ->where('status', '!=', 'voided')
-            ->sum('total');
+            ->where('status', '!=', 'voided');
+
+        $lastMonthQuery = $this->applyBranchFilter($lastMonthQuery);
+        $lastMonthTotal = $lastMonthQuery->sum('total');
 
         // Last month's returns
         $lastMonthReturns = ProductReturn::whereDate('returned_at', '>=', $lastMonth)
@@ -80,6 +96,10 @@ class DashboardController extends Controller
                     'average' => $todayCount > 0 ? round($todayTotal / $todayCount, 2) : 0,
                     'cash' => round($todayCash, 2),
                     'card' => round($todayCard, 2),
+                    'credit' => round($todayCredit, 2),
+                    'transfer' => round($todayTransfer, 2),
+                    'qr' => round($todayQR, 2),
+                    'other' => round($todayOther, 2),
                 ],
                 'month' => [
                     'total' => round($monthTotal, 2),
@@ -105,9 +125,11 @@ class DashboardController extends Controller
             $date = Carbon::now()->subDays($i);
             $dayName = $date->locale('es')->isoFormat('ddd D');
 
-            $dayTotal = Sale::whereDate('created_at', $date->toDateString())
-                ->where('status', '!=', 'voided')
-                ->sum('total');
+            $dayQuery = Sale::whereDate('created_at', $date->toDateString())
+                ->where('status', '!=', 'voided');
+
+            $dayQuery = $this->applyBranchFilter($dayQuery);
+            $dayTotal = $dayQuery->sum('total');
 
             // Subtract returns for this day
             $dayReturns = ProductReturn::whereDate('returned_at', $date->toDateString())
@@ -132,7 +154,10 @@ class DashboardController extends Controller
      */
     public function topProducts(): JsonResponse
     {
-        $topProducts = DB::table('sale_details')
+        $tenantId = auth()->user()->tenant_id;
+        $userBranchId = auth()->user()->branch_id;
+
+        $query = DB::table('sale_details')
             ->join('sales', 'sale_details.sale_id', '=', 'sales.id')
             ->join('products', 'sale_details.product_id', '=', 'products.id')
             ->leftJoin('return_details', function ($join) {
@@ -151,8 +176,17 @@ class DashboardController extends Controller
                 DB::raw('SUM(sale_details.quantity * sale_details.price) as total_revenue'),
                 DB::raw('COALESCE(SUM(return_details.subtotal), 0) as returned_revenue')
             )
+            ->where('sales.tenant_id', $tenantId)
+            ->where('products.tenant_id', $tenantId)
             ->where('sales.status', '!=', 'voided')
-            ->whereDate('sales.created_at', '>=', Carbon::now()->subDays(30))
+            ->whereDate('sales.created_at', '>=', Carbon::now()->subDays(30));
+
+        // Apply branch filter: if user has branch_id, only show products from that branch
+        if ($userBranchId) {
+            $query->where('sales.branch_id', $userBranchId);
+        }
+
+        $topProducts = $query
             ->groupBy('products.id', 'products.name', 'products.sku')
             ->orderByDesc(DB::raw('SUM(sale_details.quantity) - COALESCE(SUM(return_details.quantity_returned), 0)'))
             ->limit(10)

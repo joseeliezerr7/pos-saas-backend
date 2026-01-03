@@ -5,12 +5,15 @@ namespace App\Http\Controllers\API\Sales;
 use App\Http\Controllers\Controller;
 use App\Models\Sale\ProductReturn;
 use App\Services\ReturnService;
+use App\Traits\FiltersByBranch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
 class ReturnController extends Controller
 {
+    use FiltersByBranch;
+
     public function __construct(
         protected ReturnService $returnService
     ) {}
@@ -19,7 +22,8 @@ class ReturnController extends Controller
     {
         $query = ProductReturn::with(['details.product', 'sale', 'user', 'customer', 'branch']);
 
-        if ($request->filled('branch_id')) $query->where('branch_id', $request->branch_id);
+        // Apply branch filter
+        $query = $this->applyBranchFilter($query, $request->branch_id);
         if ($request->filled('sale_id')) $query->where('sale_id', $request->sale_id);
         if ($request->filled('status')) $query->where('status', $request->status);
         if ($request->filled('return_type')) $query->where('return_type', $request->return_type);

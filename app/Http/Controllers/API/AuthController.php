@@ -111,26 +111,47 @@ class AuthController extends Controller
      */
     public function login(Request $request): JsonResponse
     {
+        // Log para debugging
+        \Log::info('Login attempt', [
+            'email' => $request->email,
+            'all_data' => $request->all()
+        ]);
+
         $validator = Validator::make($request->all(), [
             'email' => 'required|email',
             'password' => 'required|string',
         ]);
 
         if ($validator->fails()) {
+            \Log::error('Login validation failed', ['errors' => $validator->errors()]);
             return response()->json([
                 'success' => false,
                 'errors' => $validator->errors()
             ], 422);
         }
 
-        $user = User::where('email', $request->email)->first();
+        // Ignore tenant scope during login to allow all users to authenticate
+        $user = User::withoutGlobalScope('tenant')->where('email', $request->email)->first();
+
+        \Log::info('User lookup', [
+            'email' => $request->email,
+            'user_found' => $user ? 'yes' : 'no',
+            'user_id' => $user?->id
+        ]);
 
         if (!$user || !Hash::check($request->password, $user->password)) {
+            \Log::warning('Login failed', [
+                'email' => $request->email,
+                'user_exists' => $user ? 'yes' : 'no',
+                'password_check' => $user ? (Hash::check($request->password, $user->password) ? 'valid' : 'invalid') : 'n/a'
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Credenciales inválidas'
             ], 401);
         }
+
+        \Log::info('Login successful', ['user_id' => $user->id]);
 
         if ($user->status !== 'active') {
             return response()->json([
@@ -140,7 +161,7 @@ class AuthController extends Controller
         }
 
         // Load roles and permissions
-        $user->load(['roles.permissions', 'company']);
+        $user->load(['roles.permissions', 'company', 'branch']);
 
         // Get all unique permissions from all user roles
         $permissions = $user->roles->flatMap(function ($role) {
@@ -159,14 +180,25 @@ class AuthController extends Controller
                     'name' => $user->name,
                     'email' => $user->email,
                     'tenant_id' => $user->tenant_id,
+                    'company_id' => $user->tenant_id,
                     'branch_id' => $user->branch_id,
                     'avatar' => $user->avatar,
                     'status' => $user->status,
                     'company' => $user->company ? [
                         'id' => $user->company->id,
                         'name' => $user->company->name,
+                        'slug' => $user->company->slug,
                         'rtn' => $user->company->rtn,
                         'logo' => $user->company->logo,
+                        'is_active' => $user->company->is_active,
+                    ] : null,
+                    'branch' => $user->branch ? [
+                        'id' => $user->branch->id,
+                        'code' => $user->branch->code,
+                        'name' => $user->branch->name,
+                        'address' => $user->branch->address,
+                        'phone' => $user->branch->phone,
+                        'is_main' => $user->branch->is_main,
                     ] : null,
                     'roles' => $user->roles->pluck('slug'),
                     'permissions' => $permissions,
@@ -183,7 +215,20 @@ class AuthController extends Controller
     public function me(Request $request): JsonResponse
     {
         $user = $request->user();
-        $user->load(['roles.permissions', 'company']);
+        $user->load(['roles.permissions', 'company', 'branch']);
+
+        // DEBUG: Log current user info
+        \Log::info('AuthController@me - User verified', [
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'branch_id' => $user->branch_id,
+            'tenant_id' => $user->tenant_id,
+            'headers' => [
+                'X-Branch-ID' => $request->header('X-Branch-ID'),
+                'X-Tenant-ID' => $request->header('X-Tenant-ID'),
+                'X-Company-ID' => $request->header('X-Company-ID'),
+            ]
+        ]);
 
         // Get all unique permissions from all user roles
         $permissions = $user->roles->flatMap(function ($role) {
@@ -197,14 +242,25 @@ class AuthController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'tenant_id' => $user->tenant_id,
+                'company_id' => $user->tenant_id,
                 'branch_id' => $user->branch_id,
                 'avatar' => $user->avatar,
                 'status' => $user->status,
                 'company' => $user->company ? [
                     'id' => $user->company->id,
                     'name' => $user->company->name,
+                    'slug' => $user->company->slug,
                     'rtn' => $user->company->rtn,
                     'logo' => $user->company->logo,
+                    'is_active' => $user->company->is_active,
+                ] : null,
+                'branch' => $user->branch ? [
+                    'id' => $user->branch->id,
+                    'code' => $user->branch->code,
+                    'name' => $user->branch->name,
+                    'address' => $user->branch->address,
+                    'phone' => $user->branch->phone,
+                    'is_main' => $user->branch->is_main,
                 ] : null,
                 'roles' => $user->roles->pluck('slug'),
                 'permissions' => $permissions,

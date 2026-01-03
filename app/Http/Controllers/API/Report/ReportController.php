@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Sale\Sale;
 use App\Models\Sale\SaleItem;
 use App\Models\Sale\ProductReturn;
+use App\Traits\FiltersByBranch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -13,6 +14,7 @@ use Illuminate\Support\Facades\Validator;
 
 class ReportController extends Controller
 {
+    use FiltersByBranch;
     /**
      * Generate sales report
      */
@@ -45,9 +47,8 @@ class ReportController extends Controller
             ->where('status', 'completed')
             ->whereBetween('created_at', [$dateFrom . ' 00:00:00', $dateTo . ' 23:59:59']);
 
-        if ($branchId) {
-            $salesQuery->where('branch_id', $branchId);
-        }
+        // Apply branch filter automatically
+        $salesQuery = $this->applyBranchFilter($salesQuery, $branchId);
 
         if ($paymentMethod) {
             $salesQuery->where('payment_method', $paymentMethod);
@@ -60,9 +61,8 @@ class ReportController extends Controller
             ->where('status', 'completed')
             ->whereBetween('returned_at', [$dateFrom . ' 00:00:00', $dateTo . ' 23:59:59']);
 
-        if ($branchId) {
-            $returnsQuery->where('branch_id', $branchId);
-        }
+        // Apply branch filter to returns
+        $returnsQuery = $this->applyBranchFilter($returnsQuery, $branchId);
 
         $returns = $returnsQuery->with('details')->get();
 

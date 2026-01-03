@@ -4,18 +4,42 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Traits\ValidatesPlanLimits;
+use App\Traits\FiltersByBranch;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 
 class ProductController extends Controller
 {
+    use ValidatesPlanLimits, FiltersByBranch;
     /**
      * Display a listing of products
      */
     public function index(Request $request): JsonResponse
     {
         $query = Product::with(['category', 'brand', 'productUnits.unit']);
+        $userBranchId = auth()->user()->branch_id;
+
+        // DEBUG: Log user info
+        \Log::info('ProductController@index - User Info', [
+            'user_id' => auth()->user()->id,
+            'user_email' => auth()->user()->email,
+            'branch_id' => $userBranchId,
+            'tenant_id' => auth()->user()->tenant_id,
+        ]);
+
+        // If user has assigned branch, filter products with stock in that branch
+        if ($userBranchId) {
+            \Log::info('ProductController@index - Applying branch filter', ['branch_id' => $userBranchId]);
+
+            $query->whereHas('stock', function ($q) use ($userBranchId) {
+                $q->where('branch_id', $userBranchId)
+                  ->where('quantity', '>', 0);
+            });
+        } else {
+            \Log::info('ProductController@index - No branch filter (admin user)');
+        }
 
         // Filter by category
         if ($request->has('category_id')) {
@@ -45,11 +69,24 @@ class ProductController extends Controller
 
         // Pagination
         $perPage = $request->get('per_page', 15);
+
+        // DEBUG: Log SQL query
+        \Log::info('ProductController@index - SQL Query', [
+            'sql' => $query->toSql(),
+            'bindings' => $query->getBindings()
+        ]);
+
         $products = $query->paginate($perPage);
 
-        // Add stock information
+        // DEBUG: Log products count
+        \Log::info('ProductController@index - Products returned', [
+            'count' => $products->count(),
+            'total' => $products->total()
+        ]);
+
+        // Add stock information (accessor handles branch filtering automatically)
         $products->getCollection()->transform(function ($product) {
-            $product->total_stock = $product->stock()->sum('quantity');
+            $product->total_stock = $product->total_stock;
             return $product;
         });
 
@@ -65,14 +102,25 @@ class ProductController extends Controller
     public function search(Request $request): JsonResponse
     {
         $search = $request->get('q', '');
+        $userBranchId = auth()->user()->branch_id;
 
-        $products = Product::with(['category'])
+        $query = Product::with(['category'])
             ->active()
-            ->search($search)
-            ->limit(20)
+            ->search($search);
+
+        // If user has assigned branch, filter products with stock in that branch
+        if ($userBranchId) {
+            $query->whereHas('stock', function ($q) use ($userBranchId) {
+                $q->where('branch_id', $userBranchId)
+                  ->where('quantity', '>', 0);
+            });
+        }
+
+        $products = $query->limit(20)
             ->get()
             ->map(function ($product) {
-                $product->total_stock = $product->stock()->sum('quantity');
+                // Accessor handles branch filtering automatically
+                $product->total_stock = $product->total_stock;
                 return $product;
             });
 
@@ -99,7 +147,8 @@ class ProductController extends Controller
             ], 404);
         }
 
-        $product->total_stock = $product->stock()->sum('quantity');
+        // Accessor handles branch filtering automatically
+        $product->total_stock = $product->total_stock;
 
         return response()->json([
             'success' => true,
@@ -112,6 +161,12 @@ class ProductController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        // Validate plan limits before creating product
+        $limitError = $this->validateProductLimit();
+        if ($limitError) {
+            return $limitError;
+        }
+
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
             'category_id' => 'required|exists:categories,id',

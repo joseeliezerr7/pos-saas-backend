@@ -19,11 +19,17 @@ class Company extends Model
         'logo',
         'is_active',
         'settings',
+        'notification_settings',
     ];
 
     protected $casts = [
         'settings' => 'array',
+        'notification_settings' => 'array',
         'is_active' => 'boolean',
+    ];
+
+    protected $attributes = [
+        'notification_settings' => '{"send_invoice_email":true,"send_sale_confirmation":false,"send_low_stock_alerts":true,"low_stock_alert_email":""}',
     ];
 
     public function users()

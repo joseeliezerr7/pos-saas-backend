@@ -15,6 +15,8 @@ use App\Models\Catalog\Product;
 use App\Models\Customer;
 use App\Models\Unit;
 use App\Models\Fiscal\CAI;
+use App\Models\Brand;
+use App\Models\Stock;
 
 class DatabaseSeeder extends Seeder
 {
@@ -268,12 +270,30 @@ class DatabaseSeeder extends Seeder
         $catBebidas = Category::where('tenant_id', $company1->id)->where('name', 'Bebidas')->first();
         $catLimpieza = Category::where('tenant_id', $company1->id)->where('name', 'Limpieza')->first();
 
+        // Create Brands
+        $brands = [
+            ['tenant_id' => $company1->id, 'name' => 'Diana', 'slug' => 'diana', 'description' => 'Marca líder en alimentos', 'is_active' => true],
+            ['tenant_id' => $company1->id, 'name' => 'Coca Cola', 'slug' => 'coca-cola', 'description' => 'Bebidas refrescantes', 'is_active' => true],
+            ['tenant_id' => $company1->id, 'name' => 'Clorox', 'slug' => 'clorox', 'description' => 'Productos de limpieza', 'is_active' => true],
+            ['tenant_id' => $company1->id, 'name' => 'Bimbo', 'slug' => 'bimbo', 'description' => 'Pan y panadería', 'is_active' => true],
+            ['tenant_id' => $company1->id, 'name' => 'Genérica', 'slug' => 'generica', 'description' => 'Productos sin marca', 'is_active' => true],
+        ];
+
+        foreach ($brands as $brand) {
+            Brand::create($brand);
+        }
+
+        $brandDiana = Brand::where('tenant_id', $company1->id)->where('slug', 'diana')->first();
+        $brandCoca = Brand::where('tenant_id', $company1->id)->where('slug', 'coca-cola')->first();
+        $brandClorox = Brand::where('tenant_id', $company1->id)->where('slug', 'clorox')->first();
+        $brandGenerica = Brand::where('tenant_id', $company1->id)->where('slug', 'generica')->first();
+
         // Create Products
         $products = [
             [
                 'tenant_id' => $company1->id,
                 'category_id' => $catAlimentos->id,
-                'unit_id' => $unitUnd->id,
+                'brand_id' => $brandDiana->id,
                 'name' => 'Arroz Diana 1kg',
                 'sku' => 'ARR-001',
                 'barcode' => '7501234567890',
@@ -281,13 +301,13 @@ class DatabaseSeeder extends Seeder
                 'cost' => 25.00,
                 'price' => 35.00,
                 'tax_type' => 'taxed',
-                'min_stock' => 20,
                 'is_active' => true,
+                'stock_quantity' => 100,
             ],
             [
                 'tenant_id' => $company1->id,
                 'category_id' => $catAlimentos->id,
-                'unit_id' => $unitUnd->id,
+                'brand_id' => $brandGenerica->id,
                 'name' => 'Frijoles Rojos 500g',
                 'sku' => 'FRJ-001',
                 'barcode' => '7501234567891',
@@ -295,13 +315,13 @@ class DatabaseSeeder extends Seeder
                 'cost' => 18.00,
                 'price' => 28.00,
                 'tax_type' => 'taxed',
-                'min_stock' => 15,
                 'is_active' => true,
+                'stock_quantity' => 150,
             ],
             [
                 'tenant_id' => $company1->id,
                 'category_id' => $catBebidas->id,
-                'unit_id' => $unitUnd->id,
+                'brand_id' => $brandCoca->id,
                 'name' => 'Coca Cola 600ml',
                 'sku' => 'BEB-001',
                 'barcode' => '7501234567892',
@@ -309,13 +329,13 @@ class DatabaseSeeder extends Seeder
                 'cost' => 12.00,
                 'price' => 20.00,
                 'tax_type' => 'taxed',
-                'min_stock' => 50,
                 'is_active' => true,
+                'stock_quantity' => 200,
             ],
             [
                 'tenant_id' => $company1->id,
                 'category_id' => $catBebidas->id,
-                'unit_id' => $unitUnd->id,
+                'brand_id' => $brandGenerica->id,
                 'name' => 'Agua Azul 1L',
                 'sku' => 'BEB-002',
                 'barcode' => '7501234567893',
@@ -323,13 +343,13 @@ class DatabaseSeeder extends Seeder
                 'cost' => 5.00,
                 'price' => 10.00,
                 'tax_type' => 'taxed',
-                'min_stock' => 100,
                 'is_active' => true,
+                'stock_quantity' => 300,
             ],
             [
                 'tenant_id' => $company1->id,
                 'category_id' => $catLimpieza->id,
-                'unit_id' => $unitUnd->id,
+                'brand_id' => $brandClorox->id,
                 'name' => 'Cloro Clorox 1L',
                 'sku' => 'LIM-001',
                 'barcode' => '7501234567894',
@@ -337,13 +357,35 @@ class DatabaseSeeder extends Seeder
                 'cost' => 22.00,
                 'price' => 35.00,
                 'tax_type' => 'taxed',
-                'min_stock' => 25,
                 'is_active' => true,
+                'stock_quantity' => 80,
             ],
         ];
 
-        foreach ($products as $prod) {
-            Product::create($prod);
+        foreach ($products as $productData) {
+            $stockQty = $productData['stock_quantity'];
+            unset($productData['stock_quantity']);
+
+            $product = Product::create($productData);
+
+            // Create stock for both branches
+            Stock::create([
+                'tenant_id' => $company1->id,
+                'product_id' => $product->id,
+                'branch_id' => $branch1->id,
+                'quantity' => $stockQty,
+                'min_stock' => 10,
+                'max_stock' => 500,
+            ]);
+
+            Stock::create([
+                'tenant_id' => $company1->id,
+                'product_id' => $product->id,
+                'branch_id' => $branch1b->id,
+                'quantity' => floor($stockQty / 2), // Half stock in second branch
+                'min_stock' => 5,
+                'max_stock' => 250,
+            ]);
         }
 
         // Create Customers
@@ -355,7 +397,6 @@ class DatabaseSeeder extends Seeder
                 'email' => 'juan.perez@example.com',
                 'phone' => '+504 9999-1111',
                 'address' => 'Col. Alameda, Tegucigalpa',
-                'customer_type' => 'individual',
                 'is_active' => true,
             ],
             [
@@ -365,7 +406,6 @@ class DatabaseSeeder extends Seeder
                 'email' => 'maria.garcia@example.com',
                 'phone' => '+504 9999-2222',
                 'address' => 'Col. Florencia, San Pedro Sula',
-                'customer_type' => 'individual',
                 'is_active' => true,
             ],
             [
@@ -375,7 +415,6 @@ class DatabaseSeeder extends Seeder
                 'email' => 'ventas@comercialhonduras.hn',
                 'phone' => '+504 2555-3333',
                 'address' => 'Barrio El Centro, Tegucigalpa',
-                'customer_type' => 'business',
                 'is_active' => true,
             ],
         ];
@@ -400,14 +439,27 @@ class DatabaseSeeder extends Seeder
             'notes' => 'CAI para sucursal principal',
         ]);
 
-        // Generate correlatives for CAI
-        $this->command->info('Generando correlativos para CAI...');
-        \App\Services\CorrelativeService::class;
-        $correlativeService = app(\App\Services\CorrelativeService::class);
-        $correlativeService->generateCorrelatives($cai1);
+        // Note: Correlatives can be generated later through the UI
+        $this->command->info('CAI creado. Los correlativos se pueden generar desde el sistema.');
+
+        // Create Permissions
+        $this->call(PermissionSeeder::class);
+
+        // Assign Permissions to Roles
+        $this->call(RolePermissionSeeder::class);
+
+        // Create Super Admin User
+        $this->call(SuperAdminSeeder::class);
 
         // Call Cash Register Seeder
         $this->call(CashRegisterSeeder::class);
+
+        // Call Customer Segmentation Seeders
+        $this->call(CustomerGroupSeeder::class);
+        $this->call(CustomerTagSeeder::class);
+
+        // Call Loyalty Program Seeder
+        $this->call(LoyaltySeeder::class);
 
         $this->command->info('✅ Seeder completado exitosamente!');
         $this->command->info('');

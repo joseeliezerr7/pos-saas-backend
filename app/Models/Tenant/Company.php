@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\HasOneThrough;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
 
 class Company extends Model
 {
@@ -18,6 +19,7 @@ class Company extends Model
     protected $fillable = [
         'name',
         'legal_name',
+        'slug',
         'rtn',
         'logo',
         'address',
@@ -34,6 +36,40 @@ class Company extends Model
     ];
 
     protected $auditEvents = ['created', 'updated', 'deleted'];
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($company) {
+            if (empty($company->slug)) {
+                $company->slug = static::generateUniqueSlug($company->name);
+            }
+        });
+
+        static::updating(function ($company) {
+            if ($company->isDirty('name') && empty($company->slug)) {
+                $company->slug = static::generateUniqueSlug($company->name);
+            }
+        });
+    }
+
+    /**
+     * Genera un slug único basado en el nombre
+     */
+    protected static function generateUniqueSlug(string $name): string
+    {
+        $baseSlug = Str::slug($name);
+        $slug = $baseSlug;
+        $counter = 1;
+
+        while (static::where('slug', $slug)->exists()) {
+            $slug = $baseSlug . '-' . $counter;
+            $counter++;
+        }
+
+        return $slug;
+    }
 
     public function subscription(): HasOne
     {

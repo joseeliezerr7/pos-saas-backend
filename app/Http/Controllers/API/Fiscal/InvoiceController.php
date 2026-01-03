@@ -25,6 +25,12 @@ class InvoiceController extends Controller
         $query = Invoice::with(['sale.details.product', 'sale.customer', 'cai'])
             ->where('tenant_id', auth()->user()->tenant_id);
 
+        // Filter by user's branch (if user has assigned branch)
+        $userBranchId = auth()->user()->branch_id;
+        if ($userBranchId) {
+            $query->whereHas('sale', fn($q) => $q->where('branch_id', $userBranchId));
+        }
+
         // Filters
         if ($request->has('cai_id')) {
             $query->where('cai_id', $request->cai_id);
@@ -99,6 +105,17 @@ class InvoiceController extends Controller
 
         try {
             $invoice = $this->invoiceService->generateInvoice($sale, $request->all());
+
+            // Send email notification if enabled
+            $company = auth()->user()->company;
+            $notificationSettings = $company->notification_settings ?? [];
+
+            if (isset($notificationSettings['send_invoice_email']) && $notificationSettings['send_invoice_email']) {
+                // Send email to customer if they have an email
+                if ($invoice->customer && $invoice->customer->email) {
+                    \Mail::to($invoice->customer->email)->send(new \App\Mail\InvoiceSent($invoice));
+                }
+            }
 
             return response()->json([
                 'success' => true,

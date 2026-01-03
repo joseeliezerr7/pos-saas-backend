@@ -4,6 +4,7 @@ namespace App\Http\Controllers\API\User;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Traits\ValidatesPlanLimits;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Hash;
@@ -11,6 +12,7 @@ use Illuminate\Support\Facades\Validator;
 
 class UserController extends Controller
 {
+    use ValidatesPlanLimits;
     /**
      * Display a listing of users
      */
@@ -77,6 +79,12 @@ class UserController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        // Validate plan limits before creating user
+        $limitError = $this->validateUserLimit();
+        if ($limitError) {
+            return $limitError;
+        }
+
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users,email',

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\CashRegister\CashOpening;
 use App\Models\CashRegister\CashRegister;
 use App\Models\CashRegister\CashTransaction;
+use App\Traits\FiltersByBranch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -13,17 +14,19 @@ use Illuminate\Support\Facades\Validator;
 
 class CashRegisterController extends Controller
 {
+    use FiltersByBranch;
     /**
      * Get all cash registers for the current branch
      */
     public function index(Request $request): JsonResponse
     {
-        $cashRegisters = CashRegister::with(['branch'])
-            ->where('tenant_id', auth()->user()->tenant_id)
-            ->when($request->has('branch_id'), function ($query) use ($request) {
-                $query->where('branch_id', $request->branch_id);
-            })
-            ->get();
+        $query = CashRegister::with(['branch'])
+            ->where('tenant_id', auth()->user()->tenant_id);
+
+        // Apply branch filter
+        $query = $this->applyBranchFilter($query, $request->branch_id);
+
+        $cashRegisters = $query->get();
 
         return response()->json([
             'success' => true,

@@ -37,6 +37,19 @@ class Plan extends Model
         'sort_order' => 'integer',
     ];
 
+    protected $appends = ['monthly_price', 'yearly_price'];
+
+    // Accessors for backwards compatibility with frontend
+    public function getMonthlyPriceAttribute()
+    {
+        return $this->price_monthly;
+    }
+
+    public function getYearlyPriceAttribute()
+    {
+        return $this->price_yearly;
+    }
+
     public function subscriptions(): HasMany
     {
         return $this->hasMany(Subscription::class);

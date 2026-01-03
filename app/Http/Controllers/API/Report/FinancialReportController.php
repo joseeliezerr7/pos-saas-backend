@@ -35,14 +35,18 @@ class FinancialReportController extends Controller
         }
 
         $tenantId = auth()->user()->tenant_id;
+        $userBranchId = auth()->user()->branch_id;
+
+        // Determine which branch to filter by
+        $filterBranchId = $userBranchId ?? $request->branch_id ?? null;
 
         // Sales data
         $salesQuery = Sale::where('tenant_id', $tenantId)
             ->where('status', 'completed')
             ->whereBetween('created_at', [$request->date_from . ' 00:00:00', $request->date_to . ' 23:59:59']);
 
-        if ($request->filled('branch_id')) {
-            $salesQuery->where('branch_id', $request->branch_id);
+        if ($filterBranchId) {
+            $salesQuery->where('branch_id', $filterBranchId);
         }
 
         $sales = $salesQuery->get();
@@ -67,8 +71,8 @@ class FinancialReportController extends Controller
             ->whereIn('status', ['received', 'completed'])
             ->whereBetween('created_at', [$request->date_from, $request->date_to]);
 
-        if ($request->filled('branch_id')) {
-            $purchasesQuery->where('branch_id', $request->branch_id);
+        if ($filterBranchId) {
+            $purchasesQuery->where('branch_id', $filterBranchId);
         }
 
         $purchases = $purchasesQuery->get();
@@ -77,8 +81,8 @@ class FinancialReportController extends Controller
         $operatingExpensesQuery = Expense::where('tenant_id', $tenantId)
             ->whereBetween('expense_date', [$request->date_from, $request->date_to]);
 
-        if ($request->filled('branch_id')) {
-            $operatingExpensesQuery->where('branch_id', $request->branch_id);
+        if ($filterBranchId) {
+            $operatingExpensesQuery->where('branch_id', $filterBranchId);
         }
 
         $operatingExpenses = $operatingExpensesQuery->get();
@@ -121,7 +125,7 @@ class FinancialReportController extends Controller
 
             $dayOperatingExpenses = Expense::where('tenant_id', $tenantId)
                 ->whereDate('expense_date', $date)
-                ->when($request->filled('branch_id'), fn($q) => $q->where('branch_id', $request->branch_id))
+                ->when($filterBranchId, fn($q) => $q->where('branch_id', $filterBranchId))
                 ->sum('amount');
 
             $revenue = $daySales->sum('total');
